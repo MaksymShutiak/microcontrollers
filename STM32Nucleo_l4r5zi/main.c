@@ -7,50 +7,30 @@
 #include "headers/uart.h"
 #include "headers/registers.h"
 
-#define FREQ 80000000  // CPU frequency, 16 Mhz
-#define BAUD_RATE 9600  // CPU frequency, 16 Mhz
-#define BIT(x) (1UL << (x))
-
-#define PIN(bank, num) ((((bank) - 'A') << 8) | (num))
-#define PINNO(pin) (pin & 255)
-#define PINBANK(pin) (pin >> 8)
-#define GPIO(bank) ((struct gpio *) (0x48000000 + 0x400 * (bank)))
-
-/* static inline void gpio_write(uint16_t pin, bool val) { */
-/*   struct gpio *gpio = GPIO(PINBANK(pin)); */
-/*   gpio->BSRR = (1U << PINNO(pin)) << (val ? 0 : 16); */
-/* } */
 static inline void spin(volatile uint32_t count) {
   while (count--) asm("nop");
 }
 
-static inline void gpio_set_af(uint16_t pin, uint8_t af_num) {
-  struct gpio *gpio = GPIO(PINBANK(pin));  // GPIO bank
-  int n = PINNO(pin);                      // Pin number
-  gpio->AFR[n >> 3] &= ~(15UL << ((n & 7) * 4));
-  gpio->AFR[n >> 3] |= ((uint32_t) af_num) << ((n & 7) * 4);
-}
-
-static inline void uart_write_byte(struct uart *uart, uint8_t byte) {
-  uart->TDR = byte;
-  while ((uart->ISR & BIT(7)) == 0) spin(1);
-}
-
-static inline void uart_write_buf(struct uart *uart, char *buf, size_t len) {
-  while (len-- > 0) uart_write_byte(uart, *(uint8_t *) buf++);
-}
-
-
 int main(void) {
-  RCC->APB1ENR1 = (1 << 17); 
-  RCC->AHB2ENR = (1 << 0) | (1 << 1) | (1 << 2); /* enable port A and port B and C */
-  UART2->CR1 = 0;                           // Disable this UART
-  UART2->BRR = FREQ / BAUD_RATE;                 // FREQ is a UART bus frequency
-  UART2->CR1 |= (1 << 0) | (1 << 2) | (1 << 3);
+  RCC->CR |= (0x1UL << 8U);
+  while ( !( RCC->CR & (0x1UL << 10U)) ) {};
+  RCC->CFGR &= ~( 0x3UL << 0U );
+  RCC->CFGR |=  ( 0x00000001UL );
+  while ( ( RCC->CFGR & (0x3UL << 2U)) != 0x00000004UL) {};
 
-  GPIOA->MODER  &= ~(3 << (2*2));
-  GPIOA->MODER = (2 << 2 * 2);
-  gpio_set_af(PIN('A', 2), 7);
+  RCC->AHB2ENR = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 6); /* enable port A and port B and C */
+  RCC->APB1ENR2 = (1 << 0); 
+  RCC->APB2ENR = (1 << 14); 
+
+  LPUART1->CR1 = (1 << 0) | (1 << 2) | (1 << 3);
+
+  GPIOG->MODER  &= ~(3 << (7*2));
+  GPIOG->MODER = (2 << 7 * 2);
+  GPIOG->OTYPER &= ~(1 << 7);
+  GPIOG->OSPEEDR  &= ~(3 << (7*2));
+  GPIOG->OSPEEDR  |= (3 << (7*2));
+  GPIOG->AFR[0] &= ~( ( 0xF << ( 7 * 4 ) ) );
+  GPIOG->AFR[0] |= (8U << 7*4);
 
   GPIOC->MODER  &= ~(3 << (7*2));
   GPIOC->MODER  |= (1 << (7*2));
@@ -64,17 +44,22 @@ int main(void) {
   GPIOB->MODER |= (1 << (7*2));
   GPIOB->OTYPER &= ~(1 << 7);
 
+  LPUART1->BRR = 16000000 / 9600; // For 9600 baud rate (adjust according to your clock settings)
+  LPUART1->CR1 = (1 << 0) | (1 << 2) | (1 << 3);
+
 
   for (;;) {
-    uart_write_buf(UART2, "hi\r\n", 4);
+    while (!(LPUART1->ISR & (1 << 7))) {}
+    LPUART1->TDR = 'j';
+
     GPIOB->BSRR |= (1 << 7);
     GPIOB->BSRR |= (1 << 14);
     GPIOC->BSRR |= (1 << 7);
-    spin(99999);
+    spin(9999999);
     GPIOB->BSRR |= (1 << (16 + 7));
     GPIOB->BSRR |= (1 << (16 + 14));
     GPIOC->BSRR |= (1 << (16 + 7));
-    spin(99999);
+    spin(9999999);
   }
   return 0;
 }

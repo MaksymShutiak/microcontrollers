@@ -1,5 +1,7 @@
 #define RCC ((struct rcc *) 0x40021000)
-#define UART2 ((struct uart *) 0x40004400)
+#define LPUART1 ((struct uart *) 0x40008000)
+// #define LPUART1 ((struct uart *) 0x40013800)
 #define GPIOA ((struct gpio *) (0x48000000 + 0x400 * ('A' - 'A')))
 #define GPIOB ((struct gpio *) (0x48000000 + 0x400 * ('B' - 'A')))
 #define GPIOC ((struct gpio *) (0x48000000  + 0x400 * ('C' - 'A')))
+#define GPIOG ((struct gpio *) (0x48000000  + 0x400 * ('G' - 'A')))
