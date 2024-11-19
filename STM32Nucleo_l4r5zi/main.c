@@ -1,82 +1,49 @@
 #include <stddef.h>
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
+#include "stm32l4r5xx.h"
+#include "hal/hal.h"
 
-#include "headers/rcc.h"
-#include "headers/gpio.h"
-#include "headers/uart.h"
-#include "headers/registers.h"
-
-static inline void spin(volatile uint32_t count) {
-  while (count--) asm("nop");
+static inline void pwr_vdd2_init() {
+  RCC->APB1ENR1 |= (1 << 28);
+  PWR->CR2 |= (1 << 9);
 }
 
 int main(void) {
-  RCC->CR |= (0x1UL << 8U);
-  while ( !( RCC->CR & (0x1UL << 10U)) ) {};
-  RCC->CFGR &= ~( 0x3UL << 0U );
-  RCC->CFGR |=  ( 0x00000001UL );
-  while ( ( RCC->CFGR & (0x3UL << 2U)) != 0x00000004UL) {};
+  RCC->APB2ENR |= (1 << 0);                   // Enable SYSCFG
+  RCC->AHB2ENR |= GPIOBEN | GPIOCEN | GPIODEN | GPIOGEN; /* enable port A and port B and C */
+  pwr_vdd2_init();
+  init_uart(LPUART1);
+  uint32_t timer, period = 1000;
+  systick_init(CLOCK_SPEED/period);
 
-  RCC->AHB2ENR = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 6); /* enable port A and port B and C */
-  RCC->APB1ENR2 = (1 << 0); 
-  RCC->APB2ENR = (1 << 14); 
-
-  LPUART1->CR1 = (1 << 0) | (1 << 2) | (1 << 3);
-
-  GPIOG->MODER  &= ~(3 << (7*2));
-  GPIOG->MODER = (2 << 7 * 2);
-  GPIOG->OTYPER &= ~(1 << 7);
-  GPIOG->OSPEEDR  &= ~(3 << (7*2));
-  GPIOG->OSPEEDR  |= (3 << (7*2));
-  GPIOG->AFR[0] &= ~( ( 0xF << ( 7 * 4 ) ) );
-  GPIOG->AFR[0] |= (8U << 7*4);
-
-  GPIOC->MODER  &= ~(3 << (7*2));
-  GPIOC->MODER  |= (1 << (7*2));
-  GPIOC->OTYPER &= ~(1 << 7);
-  /**/
-  GPIOB->MODER  &= ~(3 << (14*2));
-  GPIOB->MODER |= (1 << 14 * 2);
-  GPIOB->OTYPER &= ~(1 << 14);
-
-  GPIOB->MODER  &= ~(3 << (7*2));
-  GPIOB->MODER |= (1 << (7*2));
-  GPIOB->OTYPER &= ~(1 << 7);
-
-  LPUART1->BRR = 16000000 / 9600; // For 9600 baud rate (adjust according to your clock settings)
-  LPUART1->CR1 = (1 << 0) | (1 << 2) | (1 << 3);
-
+  gpio_set_mode(GPIOB, 7, GPIO_MODE_OUTPUT, 1);
+  gpio_set_mode(GPIOB, 14, GPIO_MODE_OUTPUT, 1);
+  gpio_set_mode(GPIOC, 7, GPIO_MODE_OUTPUT, 1);
 
   for (;;) {
-    while (!(LPUART1->ISR & (1 << 7))) {}
-    LPUART1->TDR = 'j';
+    set_uart_receive_buffer();
+    if(ud.finished && my_strcmp(ud.buffer, "led_b_7_on\0")) {
+      gpio_write(GPIOB, 7, true);
+      uart_write_buf(rx_buffer, sizeof(rx_buffer));
+      uart_write_byte('\n');
+    }
 
-    GPIOB->BSRR |= (1 << 7);
-    GPIOB->BSRR |= (1 << 14);
-    GPIOC->BSRR |= (1 << 7);
-    spin(9999999);
-    GPIOB->BSRR |= (1 << (16 + 7));
-    GPIOB->BSRR |= (1 << (16 + 14));
-    GPIOC->BSRR |= (1 << (16 + 7));
-    spin(9999999);
+    if(ud.finished && my_strcmp(ud.buffer, "led_b_7_off\0")) {
+      gpio_write(GPIOB, 7, false);
+      uart_write_buf(rx_buffer, sizeof(rx_buffer));
+      uart_write_byte('\n');
+    }
+    char val = (~(GPIOB->IDR) & (1 << 7)) ? '1' : '0';
+    if (timer_expired(&timer, period, (unsigned)s_ticks)) {
+      static bool c7;
+      gpio_write(GPIOC, 7, c7);
+      uart_write_buf(&val, 1);
+      uart_write_buf("\n", 1);
+      c7 = !c7;
+    }
   }
   return 0;
 }
-
-// Startup code
-__attribute__((naked, noreturn)) void _reset(void) {
-  // memset .bss to zero, and copy .data section to RAM region
-  extern long _sbss, _ebss, _sdata, _edata, _sidata;
-  for (long *dst = &_sbss; dst < &_ebss; dst++) *dst = 0;
-  for (long *dst = &_sdata, *src = &_sidata; dst < &_edata;) *dst++ = *src++;
-
-  main();             // Call main()
-  for (;;) (void) 0;  // Infinite loop in the case if main() returns
-}
-
-extern void _estack(void);  // Defined in link.ld
-
-// 16 standard and 91 STM32-specific handlers
-__attribute__((section(".vectors"))) void (*const tab[16 + 95])(void) = {
-    _estack, _reset};
