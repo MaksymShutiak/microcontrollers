@@ -10,8 +10,8 @@ build:
 	arm-none-eabi-objcopy -Oihex ./build/firmware.elf ./build/firmware.hex
 
 flash: 
-	nrfjprog -f NRF52 --program ./build/firmware.hex --recover --verify
-	nrfjprog -f NRF52 --reset
+	nrfutil device program ./build/firmware.hex --recover --verify
+	nrfutil -f NRF52 --reset
 
 clean:
 	rm -rf ./build 

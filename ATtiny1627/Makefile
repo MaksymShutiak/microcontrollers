@@ -5,8 +5,8 @@ SOURCES = main.c
 
 build: 
 	mkdir build
-	avr-gcc $(CFLAGS) -Os -o ./build/main.elf $(SOURCES)
-	avr-objcopy -O ihex ./build/main.elf ./build/program.hex
+	~/Downloads/avr8-gnu-toolchain-darwin_x86_64/bin/avr-gcc $(CFLAGS) -Os -o ./build/main.elf $(SOURCES)
+	~/Downloads/avr8-gnu-toolchain-darwin_x86_64/bin/avr-objcopy -O ihex ./build/main.elf ./build/program.hex
 
 
 flash: 
